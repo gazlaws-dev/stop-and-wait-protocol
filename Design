@@ -1,0 +1,79 @@
+DESIGN
+
+Client/Sender:
+
+1. Gets the required destination IP address and port number from command line arguments.
+		host = gethostbyname(argv[1]);
+
+		receiverAddr.sin_family = AF_INET;
+		receiverAddr.sin_port = htons(atoi(argv[2]));
+		receiverAddr.sin_addr = *((struct in_addr *)host->h_addr);
+	
+2.Create a socket, using datagram instead of stream for UDP
+	senderSocket = socket(AF_INET, SOCK_DGRAM, 0);
+
+
+3. Prompt user for a string (upto 25 characters) and create a packet with the payload and sequence number (initially 0).
+
+	struct pkt {
+		int ACK;
+		int seqnum;
+		char data[25];
+	} packet;
+	
+		strcpy(packet.data,input);
+		packet.seqnum=counter;
+
+
+4. Using sendto for sending UDP datagrams and increment counter for the next sequence number.
+
+		sendto(senderSocket, &packet, sizeof(packet), 0, (struct sockaddr*)&receiverAddr,  addr_size);
+		
+5. Start timeout for receiving the ACK of the packet we just sent. Timeout set to 2 seconds.
+
+		setsockopt(senderSocket,SOL_SOCKET,SO_RCVTIMEO,(char*)&timeout,sizeof(struct timeval));
+		recvlen =  recvfrom(senderSocket, &recvPacket, sizeof(recvPacket), 0,(struct sockaddr*)&receiverAddr, &addr_size);
+		
+6. If received acknowledgement equals the current counter, then packet has transferred correctly, so prompt user for another string.
+
+
+7. If timeout occurs before receiving an ACK, then resend the packet (keep doing this till we get the acknowledgement)
+		printf("Timeout! Resending pkt %d:%s\n",packet.seqnum,packet.data);
+		sendto(senderSocket, &packet, sizeof(packet), 0, (struct sockaddr*)&receiverAddr,  addr_size);
+		recvlen = recvfrom(senderSocket, &recvPacket, sizeof(recvPacket), 0,(struct sockaddr*)&receiverAddr, &addr_size);
+		
+		
+		
+Server/Receiver:
+
+1. Create a socket and bind with the client
+		recvSocket = socket(AF_INET, SOCK_DGRAM, 0);
+		bind(recvSocket, (struct sockaddr*)&receiverAddr, addr_size);
+		
+2. Required setup of appropriate values to the receiverAddr struct
+
+3. Wait to receive a packet from client
+	
+	recvfrom(recvSocket, &recvPacket, sizeof(recvPacket), 0,(struct sockaddr*)&senderAddr, &addr_size);
+	
+	
+4. Simulate occasional drops of packets using rand()
+	int drop = rand() % 10;
+	Case(1): Packet was dropped before reaching server:
+			Simply continue since server has no knowledge of dropped packages. This causes a timeout in client since there's no ACK
+			Thus client will resend the same packet.
+			
+	Case(2): Packet received correctly, ACK sent, but ACK gets dropped before reaching. Client again times out, resends the same packet.
+			Increment ACK number(counter of next expected sequence number)
+			
+	Case(3): As a result of case(2), we receive a packet with a smaller sequnce number than counter (Duplicate packet)
+			Resend that ACK
+			
+	Case(4): Wrong order: Received packet has larger sequence number than expected, resend the ACK of the expected sequence number.
+	
+	
+5. use sendto to send the ACK with the appropriate ACK number
+		
+		sendto(recvSocket, &ackPacket, sizeof(ackPacket), 0, (struct sockaddr*)&senderAddr,  addr_size);
+	
+
